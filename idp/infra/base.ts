@@ -3,8 +3,7 @@ import {  Fn,TerraformStack } from "cdktf";
 import { Vpc } from "./.gen/modules/vpc"
 import { SecurityGroup} from "./.gen/modules/security_group";
 import { ECS } from "./src/ECS"
-import { AwsProvider, iam  } from "@cdktf/provider-aws"
-import { EcsService} from "@cdktf/provider-aws/lib/ecs"
+import { AwsProvider, iam, ecs} from "@cdktf/provider-aws"
 
 interface BaseStackConfig {
   cidr: string;
@@ -15,6 +14,7 @@ interface BaseStackConfig {
 
 export class BaseStack extends TerraformStack {
   public readonly vpc: Vpc;
+  public cluster: ecs.EcsCluster;
   constructor(scope: Construct, name: string, config: BaseStackConfig) { 
     super(scope, name);
 
@@ -72,32 +72,13 @@ export class BaseStack extends TerraformStack {
         "source_security_group_id": securityGroups.app.securityGroupIdOutput
       }]
     })
-  
-    new iam.IamRole(this,`${config.environment}-ecs-role`,{
-      name: `${config.environment}-ecs-role`,
-      assumeRolePolicy: `{
-        "Version": "2008-10-17",
-        "Statement": [
-          {
-            "Sid": "",
-            "Effect": "Allow",
-            "Principal": {
-              "Service": "ecs-tasks.amazonaws.com"
-            },
-            "Action": "sts:AssumeRole"
-          }
-        ]
-     }`
-    })
+ 
+    new iam.IamServiceLinkedRole(this,`${config.environment}-ecs-service-lin`,{ 
+      awsServiceName: "ecs.amazonaws.com" 
+    }) 
 
-   const cluster = new ECS(this,{name: "ecs-demo",environment: "dev"});
-
-   const serviceDemo = cluster.createService({ name: "app-demo",
-    image: "gcr.io/cloudrun/hello",
-    cpu: 10,
-    memory: 512, 
-    hostPort: 80, 
-    containerPort: 80 
-   })
+    const cluster = new ECS(this,{name: "ecs-demo",environment: "dev"});
+    this.cluster = cluster.ecsCluster
   }
-}
+}    
+
