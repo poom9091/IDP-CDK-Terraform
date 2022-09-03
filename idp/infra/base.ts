@@ -2,8 +2,9 @@ import { Construct } from "constructs";
 import {  Fn,TerraformStack } from "cdktf";
 import { Vpc } from "./.gen/modules/vpc"
 import { SecurityGroup} from "./.gen/modules/security_group";
-
-import { AwsProvider } from "@cdktf/provider-aws"
+import { ECS } from "./src/ECS"
+import { AwsProvider, iam  } from "@cdktf/provider-aws"
+import { EcsService} from "@cdktf/provider-aws/lib/ecs"
 
 interface BaseStackConfig {
   cidr: string;
@@ -12,10 +13,9 @@ interface BaseStackConfig {
   environment: string;
 }
 
-export default class BaseStack extends TerraformStack {
+export class BaseStack extends TerraformStack {
   public readonly vpc: Vpc;
-
-  constructor(scope: Construct, name: string, config: BaseStackConfig) {
+  constructor(scope: Construct, name: string, config: BaseStackConfig) { 
     super(scope, name);
 
     new AwsProvider(this,"dev",{
@@ -33,7 +33,7 @@ export default class BaseStack extends TerraformStack {
     })
 
     const securityGroups: { [key: string]: SecurityGroup } = {};
-
+    
     securityGroups.public = new SecurityGroup(this,`${config.environment}-sp-public`,{ 
       name: `${config.environment}-sp-public`,
       vpcId: this.vpc.vpcIdOutput,
@@ -72,6 +72,32 @@ export default class BaseStack extends TerraformStack {
         "source_security_group_id": securityGroups.app.securityGroupIdOutput
       }]
     })
+  
+    new iam.IamRole(this,`${config.environment}-ecs-role`,{
+      name: `${config.environment}-ecs-role`,
+      assumeRolePolicy: `{
+        "Version": "2008-10-17",
+        "Statement": [
+          {
+            "Sid": "",
+            "Effect": "Allow",
+            "Principal": {
+              "Service": "ecs-tasks.amazonaws.com"
+            },
+            "Action": "sts:AssumeRole"
+          }
+        ]
+     }`
+    })
 
+   const cluster = new ECS(this,{name: "ecs-demo",environment: "dev"});
+
+   const serviceDemo = cluster.createService({ name: "app-demo",
+    image: "gcr.io/cloudrun/hello",
+    cpu: 10,
+    memory: 512, 
+    hostPort: 80, 
+    containerPort: 80 
+   })
   }
 }
