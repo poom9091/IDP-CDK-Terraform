@@ -3,16 +3,17 @@ import {  Fn,TerraformStack } from "cdktf";
 import { Vpc } from "./.gen/modules/vpc"
 import { SecurityGroup} from "./.gen/modules/security_group";
 import { ECS } from "./src/ECS"
-import { AwsProvider, iam, ecs} from "@cdktf/provider-aws"
+import { AwsProvider, dynamodb, ecs} from "@cdktf/provider-aws"
 
 interface BaseStackConfig {
   cidr: string;
   region: string;
   profile: string; 
   environment: string;
+  project: string
 }
 
-export class BaseStack extends TerraformStack {
+export default class BaseStack extends TerraformStack {
   public readonly vpc: Vpc;
   public cluster: ecs.EcsCluster;
   constructor(scope: Construct, name: string, config: BaseStackConfig) { 
@@ -24,7 +25,7 @@ export class BaseStack extends TerraformStack {
     })
 
     this.vpc = new Vpc(this,`${config.environment}-vpc`,{
-      "name": `${config.environment}-vpc`,
+      "name": `${config.environment}-${config.profile}.vpc`,
       "cidr": config.cidr,
       "azs": [`${config.region}a`, `${config.region}b`, `${config.region}c`], 
       publicSubnets: [0, 1, 2].map((netnum: number) => Fn.cidrsubnet(config.cidr, 8, netnum)),
@@ -73,12 +74,23 @@ export class BaseStack extends TerraformStack {
       }]
     })
  
-    new iam.IamServiceLinkedRole(this,`${config.environment}-ecs-service-lin`,{ 
-      awsServiceName: "ecs.amazonaws.com" 
-    }) 
+    // new iam.IamServiceLinkedRole(this,`${config.environment}-ecs-service-link`,{  
+    //   awsServiceName: "ecs.amazonaws.com",
+    // }) 
 
     const cluster = new ECS(this,{name: "ecs-demo",environment: "dev"});
     this.cluster = cluster.ecsCluster
+
+
+    new dynamodb.DynamodbTable(this,`${config.environment}-dynamodb`,{ 
+      name: `${config.project}-${config.environment}`,  
+      hashKey: "Environment",
+      billingMode: "PAY_PER_REQUEST",
+      attribute: [{
+        name: "Environment",
+        type: "S"
+      }]
+    })
   }
 }    
 
