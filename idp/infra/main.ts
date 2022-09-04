@@ -1,9 +1,10 @@
-import { App} from "cdktf";
+import { Fn, App} from "cdktf";
 import BaseStack from "./base";
+import PetAppStack  from "./contrib/PetApp"; 
 
 const app = new App();
 // @ts-ignore
-const dev_environment = new BaseStack(app, "dev",{
+const origin = new BaseStack(app, "dev",{
   cidr: "10.0.0.0/16",
   region: "ap-southeast-1",
   profile: "aws-test",
@@ -11,12 +12,19 @@ const dev_environment = new BaseStack(app, "dev",{
   project: "IDP" 
 });
 
-// @ts-ignore
-const prod_environment = new BaseStack(app, "prod",{ 
-  cidr: "10.1.0.0/16",
-  region: "ap-southeast-1",
+new PetAppStack(app,"petapp",{
+  project: "demo-app",
   profile: "aws-test",
-  environment: "prod",
-  project: "IDP" 
-});
+  environment: "dev",
+  region: "ap-southeast-1",
+  publicSubnets: Fn.tolist(origin.vpc.publicSubnetsOutput),
+  vpcId: origin.vpc.vpcIdOutput,
+  image: "jenkins", 
+  cpu: 1024,
+  memory: 2048,
+  clusterId: origin.cluster.id,
+  containerPort: 80,
+  hostPort: 8080,
+})
+
 app.synth();

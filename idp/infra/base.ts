@@ -3,7 +3,7 @@ import {  Fn,TerraformStack } from "cdktf";
 import { Vpc } from "./.gen/modules/vpc"
 import { SecurityGroup} from "./.gen/modules/security_group";
 import { ECS } from "./src/ECS"
-import { AwsProvider, dynamodb, ec2, ecs} from "@cdktf/provider-aws"
+import { AwsProvider, dynamodb, ecs} from "@cdktf/provider-aws"
 
 interface BaseStackConfig {
   cidr: string;
@@ -28,12 +28,12 @@ export default class BaseStack extends TerraformStack {
       "name": `${config.environment}-${config.profile}.vpc`,
       "cidr": config.cidr,
       "azs": [`${config.region}a`, `${config.region}b`, `${config.region}c`], 
-      publicSubnets: [0, 1, 2].map((netnum: number) => Fn.cidrsubnet(config.cidr, 8, netnum)),
-      privateSubnets: [4, 5, 6].map((netnum: number) => Fn.cidrsubnet(config.cidr, 8, netnum)),
-      databaseSubnets: [8, 9, 10].map((netnum: number) => Fn.cidrsubnet(config.cidr, 8, netnum)),
+      "publicSubnets": [0, 1, 2].map((netnum: number) => Fn.cidrsubnet(config.cidr, 8, netnum)),
+      "privateSubnets": [4, 5, 6].map((netnum: number) => Fn.cidrsubnet(config.cidr, 8, netnum)),
+      "databaseSubnets": [8, 9, 10].map((netnum: number) => Fn.cidrsubnet(config.cidr, 8, netnum)),
     })
 
-    const securityGroups: { [key: string]: SecurityGroup } = {};
+    const securityGroups: { [key: string]: SecurityGroup } = {}; 
     
     securityGroups.public = new SecurityGroup(this,`${config.environment}-sp-public`,{ 
       name: `${config.environment}-sp-public`,
@@ -91,25 +91,25 @@ export default class BaseStack extends TerraformStack {
       }]
     })
     
-    const ami = new ec2.DataAwsAmi(this,'ubuntu',{
-      mostRecent: true,
-      owners: ["099720109477"],
-      filter: [
-        {
-          name: "name",
-          values: ["ubuntu/images/hvm-ssd/ubuntu-focal-20.04-amd64-server-*"],
-        },
-        {
-          name: "virtualization-type",
-          values: ["hvm"],
-        },
-      ]
-    })
+    // const ami = new ec2.DataAwsAmi(this,'ubuntu',{
+    //   mostRecent: true,
+    //   owners: ["099720109477"],
+    //   filter: [
+    //     {
+    //       name: "name",
+    //       values: ["ubuntu/images/hvm-ssd/ubuntu-focal-20.04-amd64-server-*"],
+    //     },
+    //     {
+    //       name: "virtualization-type",
+    //       values: ["hvm"],
+    //     },
+    //   ]
+    // })
 
-    new ec2.Instance(this,`${config.environment}-instance`,{ 
-      ami: ami.id,
-      instanceType: "t2.micro" 
-    }) 
+    // new ec2.Instance(this,`${config.environment}-instance`,{ 
+    //   ami: ami.id,
+    //   instanceType: "t2.micro" 
+    // }) 
   }
 }    
 
