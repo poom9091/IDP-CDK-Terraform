@@ -1,7 +1,7 @@
 import { Construct } from "constructs";
 import {  TerraformStack, Fn } from "cdktf";
 import { SecurityGroup} from "../../.gen/modules/security_group";
-import { AwsProvider, ecr, iam, elb, ecs  } from "@cdktf/provider-aws" 
+import { AwsProvider, ecr, iam, elb, ecs, codebuild  } from "@cdktf/provider-aws" 
 
 interface PetAppConfig {
   environment: string;
@@ -16,6 +16,7 @@ interface PetAppConfig {
   containerPort: number;
   clusterId: string;
   hostPort: number;
+  githubRepo: string;
 } 
 
 export default class  PetAppStack extends TerraformStack{ 
@@ -90,7 +91,7 @@ export default class  PetAppStack extends TerraformStack{
       name: `${config.environment}-${config.profile}-target-lb`,
       port: 80,
       targetType: "ip",
-      protocol: "TCP",
+      protocol: "HTTP",
       vpcId: config.vpcId
     }) 
 
@@ -131,7 +132,10 @@ export default class  PetAppStack extends TerraformStack{
       name: config.project,
       cluster: config.clusterId,
       taskDefinition: taskDefinition.arn,
-      desiredCount: 1,
+      networkConfiguration: {
+        subnets: config.publicSubnets, 
+      },
+      desiredCount: 1, 
       launchType: "FARGATE",
       loadBalancer: [{
         targetGroupArn: targetGroup.arn,
@@ -139,6 +143,85 @@ export default class  PetAppStack extends TerraformStack{
         containerPort: config.containerPort
       }]
     }) 
+    
+    const iamRole = new iam.IamRole(this,`codebuild-iam-role`,{  
+      name: `${config.environment}-${config.project}-codebuild-role`,
+      assumeRolePolicy: Fn.jsonencode({
+        "Version": "2012-10-17", 
+        "Statement": [
+          {
+            "Action": "sts:AssumeRole",
+            "Principal": {
+              "Service": "codebuild.amazonaws.com"
+            },
+            "Effect": "Allow",
+            "Sid": ""
+          }
+        ]
+      })
+    }) 
+
+    const iamPolicy = new iam.IamPolicy(this,`codebuild-iam-role-policy`,{
+      name: `${config.environment}-${config.project}-codebuild-policy` ,
+      policy: Fn.jsonencode({
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Action": [
+              "cloudwatch:*",
+              "logs:CreateLogGroup",
+              "logs:CreateLogStream",
+              "logs:PutLogEvents",
+              "s3:PutObject",
+              "s3:GetObject",
+              "s3:GetObjectVersion",
+              "s3:GetBucketAcl",
+              "s3:GetBucketLocation",
+
+              // Allow CodeBuild access to AWS services required to create a VPC network interface
+              "ec2:CreateNetworkInterface",
+              "ec2:DescribeDhcpOptions",
+              "ec2:DescribeNetworkInterfaces",
+              "ec2:DeleteNetworkInterface",
+              "ec2:DescribeSubnets",
+              "ec2:DescribeSecurityGroups",
+              "ec2:DescribeVpcs",
+              "ec2:CreateNetworkInterfacePermission",
+
+              // Required to run `aws ecs update-service`
+              "ecs:UpdateService"
+            ],
+            "Resource": [
+              "*",
+            ]
+          }
+        ]
+      })
+    })
+  
+    new iam.IamRolePolicyAttachment(this,`codebuild-iam-policy-attachment`,{  
+      role: iamRole.name,
+      policyArn: iamPolicy.arn
+    })  
+
+    new codebuild.CodebuildProject(this,`${config.environment}-${config.project}-codebuild`,{ 
+      name: `service-role`,
+      serviceRole: iamRole.arn, 
+      artifacts: {
+        type: "NO_ARTIFACTS" 
+      },
+      environment: {
+        computeType: "BUILD_GENERAL1_SMALL",
+        image: "aws/codebuild/standard:1.0",
+        type: "LINUX_CONTAINER",
+        imagePullCredentialsType: "CODEBUILD",
+      },
+      source: {
+        type: "GITHUB",
+        location: config.githubRepo, 
+      }
+    })
   } 
 }
 

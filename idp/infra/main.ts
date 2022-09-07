@@ -19,12 +19,13 @@ new PetAppStack(app,"petapp",{
   region: "ap-southeast-1",
   publicSubnets: Fn.tolist(origin.vpc.publicSubnetsOutput),
   vpcId: origin.vpc.vpcIdOutput,
-  image: "jenkins", 
+  image: "nginx", 
   cpu: 1024,
   memory: 2048,
   clusterId: origin.cluster.id,
   containerPort: 80,
   hostPort: 8080,
+  githubRepo: "https://github.com/poom9091/IDP-GO.git",
 })
 
 app.synth();
