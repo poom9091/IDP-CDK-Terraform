@@ -3,7 +3,7 @@ import {  Fn,TerraformStack } from "cdktf";
 import { Vpc } from "./.gen/modules/vpc"
 import { SecurityGroup} from "./.gen/modules/security_group";
 import { ECS } from "./src/ECS"
-import { AwsProvider, dynamodb, ecs} from "@cdktf/provider-aws"
+import { AwsProvider, dynamodb, ecs, ssm} from "@cdktf/provider-aws"
 
 interface BaseStackConfig {
   cidr: string;
@@ -32,6 +32,13 @@ export default class BaseStack extends TerraformStack {
       "privateSubnets": [4, 5, 6].map((netnum: number) => Fn.cidrsubnet(config.cidr, 8, netnum)),
       "databaseSubnets": [8, 9, 10].map((netnum: number) => Fn.cidrsubnet(config.cidr, 8, netnum)),
     })
+
+
+    new ssm.SsmParameter(this,`region`,{
+      name: "${config.environment}/aws_default_region",
+      type: "String",
+      value: config.region
+    }) 
 
     const securityGroups: { [key: string]: SecurityGroup } = {}; 
     

@@ -1,7 +1,7 @@
 import { Construct } from "constructs";
 import {  TerraformStack, Fn } from "cdktf";
 import { SecurityGroup} from "../../.gen/modules/security_group";
-import { AwsProvider, ecr, iam, elb, ecs, codebuild  } from "@cdktf/provider-aws" 
+import { AwsProvider, ecr, iam, elb, ecs, codebuild, ssm } from "@cdktf/provider-aws"  
 
 interface PetAppConfig {
   environment: string;
@@ -28,8 +28,14 @@ export default class  PetAppStack extends TerraformStack{
       profile: config.profile, 
     })
     
-    new ecr.EcrRepository(this,`${config.environment}-${config.profile}-ecr`,{
+    const ecrRepo = new ecr.EcrRepository(this,`${config.environment}-${config.profile}-ecr`,{
       name: `${config.environment}-${config.project}`
+    }) 
+
+    new ssm.SsmParameter(this,`parameter-ecr`,{
+      name: "${config.environment}/image_repo_name",
+      type: "String",
+      value: ecrRepo.name,
     }) 
 
      const role = new iam.IamRole(this,`${config.environment}-${config.profile}-role`,{  
@@ -125,6 +131,12 @@ export default class  PetAppStack extends TerraformStack{
           }
         ]
       }]) 
+    }) 
+
+    new ssm.SsmParameter(this,`taskDefinition`,{
+      name: "${config.environment}/task_definition_container_name",
+      type: "String",
+      value: config.project
     }) 
 
     // @ts-ignore
