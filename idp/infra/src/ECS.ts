@@ -1,5 +1,5 @@
 import { Construct } from "constructs";
-import { ecs } from "@cdktf/provider-aws"
+import { ecs,ssm } from "@cdktf/provider-aws"
 import {EcsCluster } from "@cdktf/provider-aws/lib/ecs";
 
 interface Cluster {
@@ -15,9 +15,15 @@ export class ECS  extends Construct {
        name: `${config.environment}-${config.name}` 
     })
     
-    new ecs.EcsClusterCapacityProviders(this,"ecs-cluster-fargate",{ 
+    const ecsCluster = new ecs.EcsClusterCapacityProviders(this,"ecs-cluster-fargate",{ 
       clusterName: this.ecsCluster.name,
       capacityProviders: ["FARGATE"]
     })
+
+    new ssm.SsmParameter(this,`ecsCluster`,{
+      name: `/${config.environment}/ecs_cluster`, 
+      type: "String",
+      value: ecsCluster.clusterName
+    }) 
   }
 }

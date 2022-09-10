@@ -1,5 +1,5 @@
 import { Construct } from "constructs";
-import {  TerraformStack, Fn } from "cdktf";
+import {  TerraformStack, Fn, TerraformOutput } from "cdktf";
 import { SecurityGroup} from "../../.gen/modules/security_group";
 import { AwsProvider, ecr, iam, elb, ecs, codebuild, ssm } from "@cdktf/provider-aws"  
 
@@ -17,6 +17,7 @@ interface PetAppConfig {
   clusterId: string;
   hostPort: number;
   githubRepo: string;
+  githubBranch: string;
 } 
 
 export default class  PetAppStack extends TerraformStack{ 
@@ -33,9 +34,9 @@ export default class  PetAppStack extends TerraformStack{
     }) 
 
     new ssm.SsmParameter(this,`parameter-ecr`,{
-      name: "${config.environment}/image_repo_name",
+      name: `/${config.environment}/image_repo_name`,
       type: "String",
-      value: ecrRepo.name,
+      value: ecrRepo.repositoryUrl
     }) 
 
      const role = new iam.IamRole(this,`${config.environment}-${config.profile}-role`,{  
@@ -65,7 +66,8 @@ export default class  PetAppStack extends TerraformStack{
             "Action": [
               "ecr:GetDownloadUrlForLayer",
               "ecr:BatchGetImage",
-              "ecr:BatchCheckLayerAvailability"
+              "ecr:BatchCheckLayerAvailability",              
+              "ssm:GetParameters"
             ],
             "Effect": "Allow",
             "Resource": "*"
@@ -93,6 +95,10 @@ export default class  PetAppStack extends TerraformStack{
       subnets: config.publicSubnets
     }) 
 
+    new TerraformOutput (this,`LB-link`,{
+      value: lb.dnsName
+    })
+
     const targetGroup = new elb.LbTargetGroup(this,`${config.environment}-${config.profile}-target-lb`,{
       name: `${config.environment}-${config.profile}-target-lb`,
       port: 80,
@@ -112,16 +118,39 @@ export default class  PetAppStack extends TerraformStack{
       }]
     })
 
+    const ecsIamRole = new iam.IamRole(this,`ecs-task-iam-role`,{  
+      name: `${config.environment}-${config.project}-ecs-task-role`,
+      assumeRolePolicy: Fn.jsonencode({
+        "Version": "2012-10-17", 
+        "Statement": [
+          {
+            "Action": "sts:AssumeRole",
+            "Principal": {
+              "Service": "ecs-tasks.amazonaws.com"
+            },
+            "Effect": "Allow",
+            "Sid": ""
+          }
+        ]
+      })
+    }) 
+
+    new iam.IamRolePolicyAttachment(this,`ecs-iam-policy-attachment`,{  
+      role: ecsIamRole.name,
+      policyArn: "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
+    })  
+
     // @ts-ignore
     const taskDefinition = new ecs.EcsTaskDefinition(this,`${config.environment}-${config.profile}-task-definition`,{ 
       family: config.project,
       requiresCompatibilities: ["FARGATE"],
       networkMode: "awsvpc",
       cpu: Fn.tostring(config.cpu), 
+      executionRoleArn: ecsIamRole.arn,
       memory: Fn.tostring(config.memory),
       containerDefinitions: Fn.jsonencode([{
         name: config.project,
-        image: config.image,
+        image: ecrRepo.repositoryUrl,
         cpu: config.cpu, 
         memory: config.memory,
         essential: true,
@@ -134,7 +163,7 @@ export default class  PetAppStack extends TerraformStack{
     }) 
 
     new ssm.SsmParameter(this,`taskDefinition`,{
-      name: "${config.environment}/task_definition_container_name",
+      name: `/${config.environment}/task_definition_container_name`,
       type: "String",
       value: config.project
     }) 
@@ -144,8 +173,9 @@ export default class  PetAppStack extends TerraformStack{
       name: config.project,
       cluster: config.clusterId,
       taskDefinition: taskDefinition.arn,
-      networkConfiguration: {
+      networkConfiguration:{
         subnets: config.publicSubnets, 
+        assignPublicIp: true
       },
       desiredCount: 1, 
       launchType: "FARGATE",
@@ -154,6 +184,11 @@ export default class  PetAppStack extends TerraformStack{
         containerName: config.project,
         containerPort: config.containerPort
       }]
+    }) 
+
+    new ssm.SsmParameter(this,`escService`,{ 
+      name: `/${config.environment}/ecs_service`, type: "String",
+      value: service.name
     }) 
     
     const iamRole = new iam.IamRole(this,`codebuild-iam-role`,{  
@@ -200,7 +235,8 @@ export default class  PetAppStack extends TerraformStack{
               "ec2:DescribeSecurityGroups",
               "ec2:DescribeVpcs",
               "ec2:CreateNetworkInterfacePermission",
-
+              "ssm:GetParameters",
+              "ecr:*",
               // Required to run `aws ecs update-service`
               "ecs:UpdateService"
             ],
@@ -228,7 +264,14 @@ export default class  PetAppStack extends TerraformStack{
         image: "aws/codebuild/standard:1.0",
         type: "LINUX_CONTAINER",
         imagePullCredentialsType: "CODEBUILD",
+        privilegedMode: true,
+        environmentVariable: [{
+          name: "ENVIRONMENT",
+          value: `${config.environment}`
+        }]
       },
+      
+      sourceVersion: config.githubBranch,
       source: {
         type: "GITHUB",
         location: config.githubRepo, 
