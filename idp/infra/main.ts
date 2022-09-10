@@ -23,10 +23,11 @@ new PetAppStack(app,"petapp",{
   cpu: 256,
   memory: 512,
   clusterId: origin.cluster.id,
-  containerPort: 80,
-  hostPort: 8080,
+  containerPort: 8080,
   githubRepo: "https://github.com/poom9091/IDP-GO.git",
   githubBranch: "main",
+  securityGroupsApp: origin.securityGroups.app,
+  securityGroupsLB: origin.securityGroups.public 
 })
 
 app.synth();

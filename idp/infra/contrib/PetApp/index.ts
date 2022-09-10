@@ -15,9 +15,10 @@ interface PetAppConfig {
   memory: number;
   containerPort: number;
   clusterId: string;
-  hostPort: number;
   githubRepo: string;
   githubBranch: string;
+  securityGroupsApp: SecurityGroup;
+  securityGroupsLB: SecurityGroup;
 } 
 
 export default class  PetAppStack extends TerraformStack{ 
@@ -76,23 +77,24 @@ export default class  PetAppStack extends TerraformStack{
       }`
     })
 
-    const securityGroups: { [key: string]: SecurityGroup } = {}; 
-    securityGroups.alb = new SecurityGroup(this,`${config.environment}-sp-public`,{ 
-      name: `${config.environment}-sp-public`,
-      vpcId: config.vpcId,
-      ingressWithSelf: [{ rule: "all-all" }],
-      egressWithSelf: [{ rule: "all-all" }],
-      egressCidrBlocks: ["0.0.0.0/0"],
-      egressRules: ["all-all"],
-      ingressCidrBlocks: ["0.0.0.0/0"],
-      ingressRules: ["https-443-tcp","http-80-tcp"],
-    })
+    // const securityGroups: { [key: string]: SecurityGroup } = {}; 
+    // securityGroups.alb = new SecurityGroup(this,`${config.environment}-sp-public`,{ 
+    //   name: `${config.environment}-sp-public`,
+    //   vpcId: config.vpcId,
+    //   ingressWithSelf: [{ rule: "all-all" }],
+    //   egressWithSelf: [{ rule: "all-all" }],
+    //   egressCidrBlocks: ["0.0.0.0/0"],
+    //   egressRules: ["all-all"],
+    //   ingressCidrBlocks: ["0.0.0.0/0"],
+    //   ingressRules: ["https-443-tcp","http-80-tcp"],
+    // })
 
     const lb = new elb.Lb(this,`${config.environment}-${config.profile}-lb`,{
       name: `${config.environment}-${config.profile}-lb`,
       loadBalancerType: "application",
-      securityGroups: [securityGroups.alb.securityGroupIdOutput],
+      securityGroups: [config.securityGroupsLB.securityGroupIdOutput],  
       subnets: config.publicSubnets
+      // securityGroups: [securityGroups.alb.securityGroupIdOutput], subnets: config.publicSubnets
     }) 
 
     new TerraformOutput (this,`LB-link`,{
@@ -175,7 +177,8 @@ export default class  PetAppStack extends TerraformStack{
       taskDefinition: taskDefinition.arn,
       networkConfiguration:{
         subnets: config.publicSubnets, 
-        assignPublicIp: true
+        assignPublicIp: true,
+        securityGroups: [config.securityGroupsApp.securityGroupIdOutput]
       },
       desiredCount: 1, 
       launchType: "FARGATE",
